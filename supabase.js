@@ -1,7 +1,7 @@
 // ── SUPABASE CONFIG ─────────────────────────────────────────────────────────
 // Reemplaza estos valores con los tuyos de Supabase
-const SUPABASE_URL = 'https://vaefexlsjgdeoezyqbit.supabase.co/rest/v1/';
-const SUPABASE_KEY = 'https://vaefexlsjgdeoezyqbit.supabase.co/rest/v1/';
+const SUPABASE_URL = 'https://vaefexlsjgdeoezyqbit.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZhZWZleGxzamdkZW9lenlxYml0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwODM0NDAsImV4cCI6MjA5NTY1OTQ0MH0.yj-ETksSdTpuPVOwLNYVZuZqMFhOxC4R9aps4KGTw8s';
 
 const { createClient } = supabase;
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
