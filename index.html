@@ -452,6 +452,8 @@ function setQty(i,isN,v){
   arr[i].qty = v===''?null:parseInt(v)||0;
   // auto-mark as present if qty > 0
   if(arr[i].qty>0 && arr[i].s==='pending') { arr[i].s='present'; fil(); }
+  // register/update count date whenever a quantity is entered
+  if(arr[i].qty!==null) { arr[i].ts=new Date().toISOString(); }
   upB(); upP(); upS(); scheduleAutoSave();
 }
 
@@ -529,13 +531,14 @@ function renderContados(){
 
 function expContados(){
   const fechaArchivo=new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}).replace(/ /g,'-');
-  let csv='Mueble,Código,Nombre del producto,Cantidad,Estado,Fecha de conteo\n';
+  let csv='Mueble,Código,Nombre del producto,Cantidad,Estado,Fecha de conteo,Hora de conteo\n';
   fL.forEach(f=>{
     [...(iD[f]||[]),...(nP[f]||[])].forEach(p=>{
       if(p.s==='pending') return;
       const lbl={present:'Está',moved:'Movido',missing:'Falta'};
-      const fecha=p.ts?new Date(p.ts).toLocaleString('es-MX'):'';
-      csv+=`"${f}","${p.b}","${p.n}","${p.qty!==null&&p.qty!==undefined?p.qty:''}","${lbl[p.s]||p.s}","${fecha}"\n`;
+      const fecha=p.ts?new Date(p.ts).toLocaleDateString('es-MX'):'';
+      const hora=p.ts?new Date(p.ts).toLocaleTimeString('es-MX'):'';
+      csv+=`"${f}","${p.b}","${p.n}","${p.qty!==null&&p.qty!==undefined?p.qty:''}","${lbl[p.s]||p.s}","${fecha}","${hora}"\n`;
     });
   });
   const a=document.createElement('a');
@@ -556,8 +559,8 @@ async function saveP(auto=false){
   el.className = 'saving';
   const data={iD:{},nP:{}};
   fL.forEach(f=>{
-    data.iD[f]=(iD[f]||[]).map(p=>({b:p.b,n:p.n,s:p.s,qty:p.qty}));
-    data.nP[f]=(nP[f]||[]).map(p=>({b:p.b,n:p.n,s:p.s,qty:p.qty}));
+    data.iD[f]=(iD[f]||[]).map(p=>({b:p.b,n:p.n,s:p.s,qty:p.qty,ts:p.ts||null}));
+    data.nP[f]=(nP[f]||[]).map(p=>({b:p.b,n:p.n,s:p.s,qty:p.qty,ts:p.ts||null}));
   });
   const ok = await cloudSave(data.iD, data.nP, fL);
   if(ok){
