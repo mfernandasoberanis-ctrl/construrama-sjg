@@ -567,8 +567,8 @@ async function saveP(auto=false){
   el.className = 'saving';
   const data={iD:{},nP:{}};
   fL.forEach(f=>{
-    data.iD[f]=(iD[f]||[]).map(p=>({b:p.b,n:p.n,s:p.s,qty:p.qty}));
-    data.nP[f]=(nP[f]||[]).map(p=>({b:p.b,n:p.n,s:p.s,qty:p.qty}));
+    data.iD[f]=(iD[f]||[]).map(p=>({b:p.b,n:p.n,s:p.s,qty:p.qty,ts:p.ts||null}));
+    data.nP[f]=(nP[f]||[]).map(p=>({b:p.b,n:p.n,s:p.s,qty:p.qty,ts:p.ts||null}));
   });
   const ok = await cloudSave(data.iD, data.nP, fL);
   if(ok){
