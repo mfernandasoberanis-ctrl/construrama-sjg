@@ -224,8 +224,10 @@ input.qty-inp:focus{border-color:#c0392b}
           <option value="moved">↔ Movidos</option>
           <option value="missing">✗ Faltan</option>
         </select>
+        <input type="date" id="cnt-fecha" onchange="renderContados()" style="font-size:13px;padding:7px 10px;border:1px solid #ddd;border-radius:7px;outline:none">
         <input type="text" id="cnt-q" placeholder="Buscar nombre o código..." oninput="renderContados()">
       </div>
+      <div style="font-size:12px;color:#888;margin-bottom:10px" id="cnt-fecha-info"></div>
       <div class="cnt-scroll">
         <table class="cnt-table">
           <thead><tr>
@@ -250,8 +252,12 @@ input.qty-inp:focus{border-color:#c0392b}
     <h3>↗ Mover a otro mueble</h3>
     <p id="move-pname" style="font-size:13px;font-weight:500;color:#333;margin-bottom:8px"></p>
     <p>Selecciona el mueble destino:</p>
-    <select id="move-dest"></select>
-    <div class="modal-btns">
+    <select id="move-dest" onchange="toggleNewMueble()"></select>
+    <div id="new-mueble-wrap" style="display:none;margin-top:10px">
+      <p style="margin-bottom:6px">Nombre del nuevo mueble:</p>
+      <input type="text" id="new-mueble-name" placeholder="Ej: Anaquel 23, Exhibidor 25..." style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:7px;font-size:14px;outline:none">
+    </div>
+    <div class="modal-btns" style="margin-top:14px">
       <button onclick="closeMove()">Cancelar</button>
       <button class="btn-r" onclick="confirmMove()">Mover</button>
     </div>
@@ -463,8 +469,17 @@ function openMove(i,isN){
   moveCtx={i,isN,fromFurn:f};
   document.getElementById('move-pname').textContent=p.n+(p.b?' ('+p.b+')':'');
   const sel=document.getElementById('move-dest');
-  sel.innerHTML=fL.filter(x=>x!==f).map(x=>`<option value="${x}">${x}</option>`).join('');
+  sel.innerHTML=fL.filter(x=>x!==f).map(x=>`<option value="${x}">${x}</option>`).join('')
+    + '<option value="__NUEVO__">➕ Crear mueble nuevo...</option>';
+  document.getElementById('new-mueble-wrap').style.display='none';
+  document.getElementById('new-mueble-name').value='';
   document.getElementById('move-modal').classList.add('open');
+}
+
+function toggleNewMueble(){
+  const sel=document.getElementById('move-dest');
+  const wrap=document.getElementById('new-mueble-wrap');
+  wrap.style.display = sel.value==='__NUEVO__' ? 'block' : 'none';
 }
 function closeMove(){
   document.getElementById('move-modal').classList.remove('open');
@@ -473,13 +488,47 @@ function closeMove(){
 function confirmMove(){
   if(!moveCtx) return;
   const {i,isN,fromFurn}=moveCtx;
-  const destFurn=document.getElementById('move-dest').value;
+  let destFurn=document.getElementById('move-dest').value;
+
+  // Handle new mueble creation
+  if(destFurn==='__NUEVO__'){
+    const nuevo=document.getElementById('new-mueble-name').value.trim();
+    if(!nuevo){ alert('Escribe el nombre del nuevo mueble'); return; }
+    if(fL.includes(nuevo)){ alert('Ese mueble ya existe, selecciónalo de la lista'); return; }
+    // Create new mueble
+    destFurn=nuevo;
+    iD[destFurn]=[];
+    nP[destFurn]=[];
+    // Insert before "Sin asignar" so it stays at the end
+    const sinIdx=fL.indexOf('Sin asignar');
+    if(sinIdx!==-1) fL.splice(sinIdx,0,destFurn);
+    else fL.push(destFurn);
+    // Rebuild mueble selectors
+    rebuildSelectors();
+  }
+
   const arr=isN?nP[fromFurn]:iD[fromFurn];
   const p=arr.splice(i,1)[0];
   if(!nP[destFurn]) nP[destFurn]=[];
   nP[destFurn].push({...p, s:'present'});
   closeMove();
-  fil(); upB(); upP(); upS();
+  fil(); upB(); upP(); upS(); scheduleAutoSave();
+}
+
+function rebuildSelectors(){
+  // Main mueble selector
+  const sel=document.getElementById('sel');
+  const cur=fL[ci];
+  sel.innerHTML=fL.map((f,i)=>`<option value="${i}">${f}</option>`).join('');
+  ci=fL.indexOf(cur);
+  sel.value=ci;
+  // Contados filter selector
+  const cf=document.getElementById('cnt-furn');
+  if(cf){
+    const curCf=cf.value;
+    cf.innerHTML='<option value="">Todos los muebles</option>'+fL.map(f=>`<option value="${f}">${f}</option>`).join('');
+    cf.value=curCf;
+  }
 }
 
 // ── SWITCH TABS ───────────────────────────────────────────────────────────
@@ -495,12 +544,13 @@ function switchTab(name,btn){
 function renderContados(){
   const furnF=document.getElementById('cnt-furn').value;
   const statF=document.getElementById('cnt-status').value;
+  const fechaF=document.getElementById('cnt-fecha').value;
   const q=(document.getElementById('cnt-q').value||'').toLowerCase();
   let rows=[];
   fL.forEach(f=>{
     [...(iD[f]||[]),...(nP[f]||[])].forEach(p=>{
       if(p.s==='pending') return;
-      rows.push({mueble:f,b:p.b,n:p.n,s:p.s,qty:p.qty});
+      rows.push({mueble:f,b:p.b,n:p.n,s:p.s,qty:p.qty,ts:p.ts});
     });
   });
   // summary
@@ -513,7 +563,20 @@ function renderContados(){
   // filters
   if(furnF) rows=rows.filter(r=>r.mueble===furnF);
   if(statF) rows=rows.filter(r=>r.s===statF);
+  if(fechaF) rows=rows.filter(r=>r.ts && new Date(r.ts).toISOString().slice(0,10)===fechaF);
   if(q) rows=rows.filter(r=>r.n.toLowerCase().includes(q)||r.b.includes(q));
+  // Show date info
+  const infoEl=document.getElementById('cnt-fecha-info');
+  if(infoEl){
+    if(fechaF){
+      const total=rows.length;
+      const totalQty=rows.reduce((s,r)=>s+(r.qty||0),0);
+      const fechaTxt=new Date(fechaF+'T12:00:00').toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+      infoEl.textContent='📅 '+fechaTxt+' — '+total+' productos contados, '+totalQty+' piezas en total';
+    } else {
+      infoEl.textContent='';
+    }
+  }
   const tbody=document.getElementById('cnt-body');
   if(!rows.length){tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:24px;color:#bbb">Sin productos contados aún</td></tr>';return;}
   const lbl={present:'✓ Está',moved:'↔ Movido',missing:'✗ Falta'};
@@ -551,7 +614,7 @@ function expContados(){
   });
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'}));
-  a.download='contados_construrama_'+fechaArchivo+'.csv'; a.click();
+  a.download=(fechaF?'contados_dia_':'contados_construrama_')+fechaArchivo+'.csv'; a.click();
 }
 
 // Auto-save timer
