@@ -510,27 +510,23 @@ function dl(content,fn){
 }
 function exp(){
   const fd=new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}).replace(/ /g,'-');
-  let csv='Mueble,Código,Nombre del producto,Cantidad,Estado,Fecha,Hora
-';
+  let csv='Mueble,Código,Nombre del producto,Cantidad,Estado,Fecha,Hora\n';
   fL.forEach(f=>{
     [...(iD[f]||[]),...(nP[f]||[])].forEach(p=>{
       if(p.s==='pending') return;
       let fecha='',hora='';
       if(p.ts){const d=new Date(p.ts);fecha=`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;hora=`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;}
-      csv+=`"${f}","${p.b}","${p.n}","${p.qty!==null&&p.qty!==undefined?p.qty:''}","${p.s==='present'?'Está':'Falta'}","${fecha}","${hora}"
-`;
+      csv+=`"${f}","${p.b}","${p.n}","${p.qty!==null&&p.qty!==undefined?p.qty:''}","${p.s==='present'?'Está':'Falta'}","${fecha}","${hora}"\n`;
     });
   });
   dl(csv,'inventario_construrama_'+fd+'.csv');
 }
 function expI(){
   const fd=new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}).replace(/ /g,'-');
-  let csv='Mueble,Código,Nombre del producto
-';
+  let csv='Mueble,Código,Nombre del producto\n';
   fL.forEach(f=>{
     [...(iD[f]||[]),...(nP[f]||[])].filter(p=>p.s==='missing').forEach(p=>{
-      csv+=`"${f}","${p.b}","${p.n}"
-`;
+      csv+=`"${f}","${p.b}","${p.n}"\n`;
     });
   });
   dl(csv,'faltantes_'+fd+'.csv');
@@ -539,16 +535,14 @@ function expContados(){
   const fechaEl=document.getElementById('cnt-fecha');
   const fechaF=fechaEl?fechaEl.value:'';
   const fd=fechaF?fechaF:new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}).replace(/ /g,'-');
-  let csv='Mueble,Código,Nombre del producto,Cantidad,Estado,Fecha,Hora
-';
+  let csv='Mueble,Código,Nombre del producto,Cantidad,Estado,Fecha,Hora\n';
   fL.forEach(f=>{
     [...(iD[f]||[]),...(nP[f]||[])].forEach(p=>{
       if(p.s==='pending') return;
       if(fechaF&&(!p.ts||new Date(p.ts).toISOString().slice(0,10)!==fechaF)) return;
       let fecha='',hora='';
       if(p.ts){const d=new Date(p.ts);fecha=`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;hora=`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;}
-      csv+=`"${f}","${p.b}","${p.n}","${p.qty!==null&&p.qty!==undefined?p.qty:''}","${p.s==='present'?'Está':'Falta'}","${fecha}","${hora}"
-`;
+      csv+=`"${f}","${p.b}","${p.n}","${p.qty!==null&&p.qty!==undefined?p.qty:''}","${p.s==='present'?'Está':'Falta'}","${fecha}","${hora}"\n`;
     });
   });
   dl(csv,(fechaF?'contados_dia_'+fechaF:'contados_construrama_'+fd)+'.csv');
