@@ -447,6 +447,11 @@ function switchTab(name,btn){
   if(name==='contados') renderContados();
 }
 
+function localDay(ts){
+  const d=new Date(ts);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
 // ── CONTADOS ──────────────────────────────────────────────────────────────────
 function renderContados(){
   const furnF=document.getElementById('cnt-furn').value;
@@ -470,7 +475,7 @@ function renderContados(){
   // Filters
   if(furnF) rows=rows.filter(r=>r.mueble===furnF);
   if(statF) rows=rows.filter(r=>r.s===statF);
-  if(fechaF) rows=rows.filter(r=>r.ts&&new Date(r.ts).toISOString().slice(0,10)===fechaF);
+  if(fechaF) rows=rows.filter(r=>r.ts&&localDay(r.ts)===fechaF);
   if(q) rows=rows.filter(r=>r.n.toLowerCase().includes(q)||r.b.includes(q));
   // Date info
   const info=document.getElementById('cnt-fecha-info');
@@ -539,7 +544,7 @@ function expContados(){
   fL.forEach(f=>{
     [...(iD[f]||[]),...(nP[f]||[])].forEach(p=>{
       if(p.s==='pending') return;
-      if(fechaF&&(!p.ts||new Date(p.ts).toISOString().slice(0,10)!==fechaF)) return;
+      if(fechaF&&(!p.ts||localDay(p.ts)!==fechaF)) return;
       let fecha='',hora='';
       if(p.ts){const d=new Date(p.ts);fecha=`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;hora=`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;}
       csv+=`"${f}","${p.b}","${p.n}","${p.qty!==null&&p.qty!==undefined?p.qty:''}","${p.s==='present'?'Está':'Falta'}","${fecha}","${hora}"\n`;
