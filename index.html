@@ -456,8 +456,12 @@ function setQty(i,isN,v){
   const f=fL[ci];
   const arr=isN?nP[f]:iD[f];
   arr[i].qty = v===''?null:parseInt(v)||0;
-  // auto-mark as present if qty > 0
-  if(arr[i].qty>0 && arr[i].s==='pending') { arr[i].s='present'; fil(); }
+  // auto-mark as present if qty > 0 and set timestamp
+  if(arr[i].qty>0 && arr[i].s==='pending') { 
+    arr[i].s='present'; 
+    arr[i].ts=new Date().toISOString();
+    fil(); 
+  }
   upB(); upP(); upS(); scheduleAutoSave();
 }
 
