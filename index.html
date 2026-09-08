@@ -263,6 +263,7 @@ function init(){
   fL=Object.keys(INV);
   buildSel();
   buildCntFurn();
+  ci=0;
   rF();
   upS();
 }
@@ -271,6 +272,7 @@ function buildSel(){
   const sel=document.getElementById('sel');
   sel.innerHTML=fL.map((f,i)=>`<option value="${i}">${f}</option>`).join('');
   sel.onchange=()=>{ci=parseInt(sel.value);document.getElementById('si').value='';rF();};
+  sel.value=ci;
 }
 
 function buildCntFurn(){
