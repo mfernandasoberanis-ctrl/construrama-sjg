@@ -344,6 +344,7 @@ function sS(i,isN,s){
   const p=(isN?nP[f]:iD[f])[i];
   p.s=s;
   p.ts=new Date().toISOString(); // ALWAYS set timestamp when status changes
+  if(s==='missing') p.qty=0;     // Falta siempre queda en 0 piezas
   fil(); upB(); upP(); upS();
   scheduleAutoSave();
 }
@@ -352,9 +353,9 @@ function setQty(i,isN,v){
   const f=fL[ci];
   const arr=isN?nP[f]:iD[f];
   arr[i].qty=v===''?null:parseInt(v)||0;
-  if(arr[i].qty>0 && arr[i].s==='pending'){
+  if(arr[i].qty!==null && arr[i].s==='pending'){
     arr[i].s='present';
-    arr[i].ts=new Date().toISOString(); // Set timestamp when qty marks as present
+    arr[i].ts=new Date().toISOString(); // Cualquier cantidad capturada, incluido 0, cuenta como revisado
     fil();
   }
   upB(); upP(); upS();
