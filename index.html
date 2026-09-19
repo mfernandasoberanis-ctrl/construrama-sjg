@@ -169,6 +169,7 @@ input.qty-inp{width:64px;text-align:center}
       <button onclick="expI()">&#8595; Solo faltantes (.csv)</button>
       <button class="btn-g" onclick="saveP()">☁️ Guardar en la nube</button>
       <button onclick="loadP()">☁️ Cargar de la nube</button>
+      <button onclick="revisarDuplicados()">🔎 Revisar duplicados</button>
     </div>
   </div>
 
@@ -223,6 +224,19 @@ input.qty-inp{width:64px;text-align:center}
     <div class="modal-btns">
       <button onclick="closeMove()">Cancelar</button>
       <button class="btn-r" onclick="confirmMove()">Mover</button>
+    </div>
+  </div>
+</div>
+
+<!-- Duplicados Modal -->
+<div class="modal-bg" id="dup-modal">
+  <div class="modal" style="max-width:440px">
+    <h3>🔎 Productos duplicados</h3>
+    <p>Productos que aparecen en más de un mueble.</p>
+    <div id="dup-body" style="max-height:340px;overflow-y:auto;margin-bottom:12px"></div>
+    <div class="modal-btns">
+      <button onclick="cerrarDup()">Cerrar</button>
+      <button class="btn-r" id="dup-unify-btn" onclick="unificarDuplicados()">Unificar todos</button>
     </div>
   </div>
 </div>
@@ -298,22 +312,26 @@ function snapshot(){
 function restaurar(data){
   if(!data) return;
 
-  // Formato viejo (por posición): se aplica como antes
+  // Formato viejo (iD/nP por mueble, sin "v"): migrar POR IDENTIDAD (codigo+nombre)
+  // respetando el mueble guardado, NO por posicion. Asi se recuperan los movidos.
   if(!data.v || data.v<2){
-    fL.forEach(f=>{
-      if(data.iD&&data.iD[f]) data.iD[f].forEach((sp,i)=>{
-        if(iD[f]&&iD[f][i]){iD[f][i].s=sp.s;iD[f][i].qty=(sp.qty===0?0:(sp.qty||null));iD[f][i].ts=sp.ts||null;}
-      });
-      if(data.nP&&data.nP[f]) nP[f]=data.nP[f].map(p=>({b:p.b,n:p.n,s:p.s,qty:(p.qty===0?0:(p.qty||null)),ts:p.ts||null}));
-    });
-    return;
+    const migEst={}, migStr={};
+    const add=(f,p)=>{
+      const k=String(p.b||'')+'||'+String(p.n||'');
+      (migStr[f]=migStr[f]||[]).push(k);
+      const cur={b:p.b,n:p.n,s:p.s||'pending',qty:(p.qty===0?0:(p.qty||null)),ts:p.ts||null};
+      const prev=migEst[k];
+      if(!prev || (prev.s==='pending' && cur.s!=='pending')) migEst[k]=cur; // conserva lo contado
+    };
+    if(data.iD) Object.keys(data.iD).forEach(f=>(data.iD[f]||[]).forEach(p=>add(f,p)));
+    if(data.nP) Object.keys(data.nP).forEach(f=>(data.nP[f]||[]).forEach(p=>add(f,p)));
+    data={v:2,estructura:migStr,estados:migEst};
   }
 
   // Formato nuevo (por producto)
   const est=data.estados||{};
   const str=data.estructura||{};
 
-  // Muebles guardados que ya no existen en el archivo: agregarlos
   Object.keys(str).forEach(f=>{
     if(!fL.includes(f)){
       const sinIdx=fL.indexOf('Sin asignar');
@@ -321,14 +339,12 @@ function restaurar(data){
     }
   });
 
-  // Qué productos del archivo base ya están colocados en el guardado
   const colocados=new Set();
   Object.values(str).forEach(lista=>lista.forEach(k=>colocados.add(k)));
 
   const nuevoID={}, nuevoNP={};
   fL.forEach(f=>{ nuevoID[f]=[]; nuevoNP[f]=[]; });
 
-  // Productos del archivo base que NO están en el guardado → productos nuevos del archivo
   Object.keys(INV).forEach(f=>{
     INV[f].forEach(p=>{
       const k=String(p.b||'')+'||'+String(p.n||'');
@@ -336,17 +352,12 @@ function restaurar(data){
     });
   });
 
-  // Colocar lo guardado en su mueble
   Object.keys(str).forEach(f=>{
+    if(!nuevoID[f]) nuevoID[f]=[];
     str[f].forEach(k=>{
       const e=est[k];
       if(!e) return;
-      nuevoID[f].push({
-        b:e.b, n:e.n,
-        s:e.s||'pending',
-        qty:(e.qty===0?0:(e.qty||null)),
-        ts:e.ts||null
-      });
+      nuevoID[f].push({b:e.b,n:e.n,s:e.s||'pending',qty:(e.qty===0?0:(e.qty||null)),ts:e.ts||null});
     });
   });
 
@@ -647,21 +658,33 @@ function expContados(){
 
 // ── CLOUD SAVE/LOAD ───────────────────────────────────────────────────────────
 let autoSaveTimer=null;
+let sinGuardar=false;
+function actualizarEstadoGuardado(){
+  const el=document.getElementById('sv-st');
+  if(el && sinGuardar){ el.textContent='● Cambios sin guardar…'; el.className='saving'; }
+}
 function scheduleAutoSave(){
+  sinGuardar=true; actualizarEstadoGuardado();
   clearTimeout(autoSaveTimer);
-  autoSaveTimer=setTimeout(()=>saveP(true),3000);
+  autoSaveTimer=setTimeout(()=>saveP(true),1500);
 }
 function setSt(txt,cls=''){
   const el=document.getElementById('sv-st');
   el.textContent=txt; el.className=cls;
 }
 async function saveP(auto=false){
+  clearTimeout(autoSaveTimer);
   setSt('☁️ Guardando...','saving');
   const snap=snapshot();
   const ok=await cloudSave(snap);
-  if(ok) setSt((auto?'☁️ Guardado automáticamente: ':'✓ Guardado: ')+new Date().toLocaleTimeString('es-MX'));
-  else setSt('⚠️ Error al guardar','err');
+  if(ok){ sinGuardar=false; setSt((auto?'☁️ Guardado automáticamente: ':'✓ Guardado: ')+new Date().toLocaleTimeString('es-MX')); }
+  else { sinGuardar=true; setSt('⚠️ NO SE GUARDÓ — revisa tu internet o que Supabase no esté pausado. No cierres sin volver a guardar.','err'); }
 }
+// Red de seguridad: guardar al salir / cambiar de pestaña y avisar si hay cambios sin guardar
+window.addEventListener('beforeunload',(e)=>{ if(sinGuardar){ e.preventDefault(); e.returnValue=''; } });
+function guardarAlSalir(){ if(sinGuardar){ clearTimeout(autoSaveTimer); saveP(true); } }
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') guardarAlSalir(); });
+window.addEventListener('pagehide',guardarAlSalir);
 async function loadP(){
   setSt('☁️ Cargando...','saving');
   const result=await cloudLoad();
@@ -776,6 +799,70 @@ function doScan(){
   }).join('');
   res.innerHTML=html;
   res.classList.add('open');
+}
+
+// ── DUPLICADOS ────────────────────────────────────────────────────────────────
+function encontrarDuplicados(){
+  const porClave={};
+  fL.forEach(f=>{
+    [...(iD[f]||[]),...(nP[f]||[])].forEach(p=>{
+      const k=String(p.b||'')+'||'+String(p.n||'');
+      (porClave[k]=porClave[k]||[]).push({f,b:p.b,n:p.n,s:p.s,qty:p.qty,ts:p.ts});
+    });
+  });
+  const dups=[];
+  Object.keys(porClave).forEach(k=>{
+    const arr=porClave[k];
+    if(new Set(arr.map(x=>x.f)).size>1) dups.push({k,b:arr[0].b,n:arr[0].n,copias:arr});
+  });
+  return dups;
+}
+function revisarDuplicados(){
+  const dups=encontrarDuplicados();
+  const body=document.getElementById('dup-body');
+  const btn=document.getElementById('dup-unify-btn');
+  if(!dups.length){
+    body.innerHTML='<div class="empty">✓ No hay productos duplicados.</div>';
+    btn.style.display='none';
+  } else {
+    body.innerHTML='<p style="font-size:13px;margin-bottom:10px">Se encontraron <b>'+dups.length+'</b> producto(s) en más de un mueble:</p>'+
+      dups.map(d=>{
+        const filas=d.copias.map(c=>{
+          const est=c.s==='present'?('✓ '+((c.qty!==null&&c.qty!==undefined)?c.qty+' pz':'contado')):(c.s==='missing'?'✗ falta':'sin contar');
+          const sa=c.f==='Sin asignar';
+          return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0">'
+            +'<span style="color:'+(sa?'#e67e22':'#555')+'">'+c.f+'</span><span style="color:#888">'+est+'</span></div>';
+        }).join('');
+        return '<div style="border:1px solid #eee;border-radius:8px;padding:8px 10px;margin-bottom:8px">'
+          +'<div style="font-size:13px;font-weight:600">'+(d.n||'')+'</div>'
+          +'<div style="font-size:11px;color:#999;margin-bottom:4px">'+(d.b||'')+'</div>'+filas+'</div>';
+      }).join('');
+    btn.style.display='';
+  }
+  document.getElementById('dup-modal').classList.add('open');
+}
+function cerrarDup(){document.getElementById('dup-modal').classList.remove('open');}
+function unificarDuplicados(){
+  const dups=encontrarDuplicados();
+  dups.forEach(d=>{
+    // estado a conservar: el contado (present) si existe, luego falta, luego el primero
+    const mejor=d.copias.find(c=>c.s==='present')||d.copias.find(c=>c.s==='missing')||d.copias[0];
+    // mueble destino: el real (no "Sin asignar"); preferir el del estado contado
+    let destino;
+    if(mejor.f!=='Sin asignar') destino=mejor.f;
+    else { const real=d.copias.find(c=>c.f!=='Sin asignar'); destino=real?real.f:d.copias[0].f; }
+    // quitar TODAS las copias de esa clave
+    fL.forEach(f=>{
+      if(iD[f]) iD[f]=iD[f].filter(p=>(String(p.b||'')+'||'+String(p.n||''))!==d.k);
+      if(nP[f]) nP[f]=nP[f].filter(p=>(String(p.b||'')+'||'+String(p.n||''))!==d.k);
+    });
+    // dejar una sola, con el estado conservado, en el mueble destino
+    if(!iD[destino]) iD[destino]=[];
+    iD[destino].push({b:mejor.b,n:mejor.n,s:mejor.s,qty:(mejor.qty===0?0:(mejor.qty||null)),ts:mejor.ts||null});
+  });
+  buildSel(); buildCntFurn(); rF(); upS();
+  saveP();               // guarda el resultado unificado en la nube
+  revisarDuplicados();   // refresca la lista
 }
 
 // ── AUTO-LOAD ON START ────────────────────────────────────────────────────────
