@@ -240,8 +240,7 @@ const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const SAVE_KEY = 'construrama_sjg';
 
-async function cloudSave(iD, nP, fL) {
-  const payload = { iD, nP };
+async function cloudSave(payload) {
   const { error } = await db
     .from('progreso')
     .upsert({ id: SAVE_KEY, data: payload, updated_at: new Date().toISOString() });
@@ -279,6 +278,81 @@ function init(){
   ci=0;
   rF();
   upS();
+}
+
+// Devuelve {estructura, estados} a partir del estado actual en memoria
+function snapshot(){
+  const estructura={}, estados={};
+  fL.forEach(f=>{
+    estructura[f]=[];
+    [...(iD[f]||[]),...(nP[f]||[])].forEach(p=>{
+      const k=String(p.b||'')+'||'+String(p.n||'');
+      estructura[f].push(k);
+      estados[k]={b:p.b,n:p.n,s:p.s,qty:p.qty,ts:p.ts};
+    });
+  });
+  return {v:2,estructura,estados};
+}
+
+// Reconstruye iD/nP desde un snapshot guardado
+function restaurar(data){
+  if(!data) return;
+
+  // Formato viejo (por posición): se aplica como antes
+  if(!data.v || data.v<2){
+    fL.forEach(f=>{
+      if(data.iD&&data.iD[f]) data.iD[f].forEach((sp,i)=>{
+        if(iD[f]&&iD[f][i]){iD[f][i].s=sp.s;iD[f][i].qty=(sp.qty===0?0:(sp.qty||null));iD[f][i].ts=sp.ts||null;}
+      });
+      if(data.nP&&data.nP[f]) nP[f]=data.nP[f].map(p=>({b:p.b,n:p.n,s:p.s,qty:(p.qty===0?0:(p.qty||null)),ts:p.ts||null}));
+    });
+    return;
+  }
+
+  // Formato nuevo (por producto)
+  const est=data.estados||{};
+  const str=data.estructura||{};
+
+  // Muebles guardados que ya no existen en el archivo: agregarlos
+  Object.keys(str).forEach(f=>{
+    if(!fL.includes(f)){
+      const sinIdx=fL.indexOf('Sin asignar');
+      if(sinIdx!==-1) fL.splice(sinIdx,0,f); else fL.push(f);
+    }
+  });
+
+  // Qué productos del archivo base ya están colocados en el guardado
+  const colocados=new Set();
+  Object.values(str).forEach(lista=>lista.forEach(k=>colocados.add(k)));
+
+  const nuevoID={}, nuevoNP={};
+  fL.forEach(f=>{ nuevoID[f]=[]; nuevoNP[f]=[]; });
+
+  // Productos del archivo base que NO están en el guardado → productos nuevos del archivo
+  Object.keys(INV).forEach(f=>{
+    INV[f].forEach(p=>{
+      const k=String(p.b||'')+'||'+String(p.n||'');
+      if(!colocados.has(k)) nuevoID[f].push({b:p.b,n:p.n,s:'pending',qty:null,ts:null});
+    });
+  });
+
+  // Colocar lo guardado en su mueble
+  Object.keys(str).forEach(f=>{
+    str[f].forEach(k=>{
+      const e=est[k];
+      if(!e) return;
+      nuevoID[f].push({
+        b:e.b, n:e.n,
+        s:e.s||'pending',
+        qty:(e.qty===0?0:(e.qty||null)),
+        ts:e.ts||null
+      });
+    });
+  });
+
+  iD=nuevoID; nP=nuevoNP;
+  buildSel(); buildCntFurn();
+  if(ci>=fL.length) ci=0;
 }
 
 function buildSel(){
@@ -440,16 +514,20 @@ function confirmMove(){
     if(fL.includes(nuevo)){alert('Ese mueble ya existe');return;}
     dest=nuevo;
     iD[dest]=[]; nP[dest]=[];
+    const actual=fL[ci];                       // recordar dónde estoy parada
     const sinIdx=fL.indexOf('Sin asignar');
     if(sinIdx!==-1) fL.splice(sinIdx,0,dest); else fL.push(dest);
+    ci=fL.indexOf(actual);                     // seguir en el mismo mueble
     buildSel(); buildCntFurn();
   }
   const arr=isN?nP[fromFurn]:iD[fromFurn];
   const p=arr.splice(i,1)[0];
+  if(!iD[dest]) iD[dest]=[];
   if(!nP[dest]) nP[dest]=[];
-  p.s='present'; p.ts=new Date().toISOString();
-  nP[dest].push(p);
+  iD[dest].push(p);   // conserva su estado: si no estaba contado, sigue sin contar
   closeMove(); fil(); upB(); upP(); upS(); scheduleAutoSave();
+  const out=document.getElementById('scan-result');
+  if(out){ out.textContent='↗ '+(p.n||'').substring(0,32)+' → '+dest; out.style.color='#a9dfbf'; }
 }
 
 // ── SWITCH TAB ────────────────────────────────────────────────────────────────
@@ -579,12 +657,8 @@ function setSt(txt,cls=''){
 }
 async function saveP(auto=false){
   setSt('☁️ Guardando...','saving');
-  const data={iD:{},nP:{}};
-  fL.forEach(f=>{
-    data.iD[f]=(iD[f]||[]).map(p=>({b:p.b,n:p.n,s:p.s,qty:p.qty,ts:p.ts}));
-    data.nP[f]=(nP[f]||[]).map(p=>({b:p.b,n:p.n,s:p.s,qty:p.qty,ts:p.ts}));
-  });
-  const ok=await cloudSave(data.iD,data.nP,fL);
+  const snap=snapshot();
+  const ok=await cloudSave(snap);
   if(ok) setSt((auto?'☁️ Guardado automáticamente: ':'✓ Guardado: ')+new Date().toLocaleTimeString('es-MX'));
   else setSt('⚠️ Error al guardar','err');
 }
@@ -593,12 +667,7 @@ async function loadP(){
   const result=await cloudLoad();
   if(!result){setSt('⚠️ No hay progreso guardado','err');return;}
   const {data,updated_at}=result;
-  fL.forEach(f=>{
-    if(data.iD&&data.iD[f]) data.iD[f].forEach((sp,i)=>{
-      if(iD[f]&&iD[f][i]){iD[f][i].s=sp.s;iD[f][i].qty=sp.qty||null;iD[f][i].ts=sp.ts||null;}
-    });
-    if(data.nP&&data.nP[f]) nP[f]=data.nP[f].map(p=>({b:p.b,n:p.n,s:p.s,qty:p.qty||null,ts:p.ts||null}));
-  });
+  restaurar(data);
   rF(); upS();
   setSt('✓ Cargado — guardado el '+new Date(updated_at).toLocaleString('es-MX'));
 }
@@ -716,12 +785,7 @@ window.addEventListener('load',async()=>{
   const result=await cloudLoad();
   if(result){
     const{data,updated_at}=result;
-    fL.forEach(f=>{
-      if(data.iD&&data.iD[f]) data.iD[f].forEach((sp,i)=>{
-        if(iD[f]&&iD[f][i]){iD[f][i].s=sp.s;iD[f][i].qty=sp.qty||null;iD[f][i].ts=sp.ts||null;}
-      });
-      if(data.nP&&data.nP[f]) nP[f]=data.nP[f].map(p=>({b:p.b,n:p.n,s:p.s,qty:p.qty||null,ts:p.ts||null}));
-    });
+    restaurar(data);
     rF(); upS();
     setSt('✓ Progreso cargado — guardado el '+new Date(updated_at).toLocaleString('es-MX'));
   } else {
@@ -736,6 +800,8 @@ window.addEventListener('load',async()=>{
     });
     document.addEventListener('click',e=>{
       if(!e.target.closest('.scan-results')&&!e.target.closest('.scanner-bar')) cerrarResultados();
+      const modalAbierto=document.querySelector('.modal-bg.open');
+      if(modalAbierto) return;   // dentro de una ventana emergente, no robar el teclado
       if(!['INPUT','SELECT','BUTTON','TEXTAREA'].includes(e.target.tagName)&&!e.target.closest('.sr-item')) inp.focus();
     });
   }
